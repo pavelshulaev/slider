@@ -26,10 +26,10 @@ if (!\Bitrix\Main\Loader::includeModule('iblock'))
  */
 class RoverSlider extends CBitrixComponent
 {
-	const WIDTH_DEFAULT     = 1280;
-	const HEIGHT_DEFAULT    = 720;
-	const SHARPEN_DEFAULT   = 30;
-	const QUALITY_DEFAULT   = 85;
+	const DEFAULT_WIDTH     = 1280;
+	const DEFAULT_HEIGHT    = 720;
+	const DEFAULT_SHARPEN   = 30;
+	const DEFAULT_QUALITY   = 85;
 
 	/**
 	 * @throws Main\LoaderException
@@ -43,36 +43,27 @@ class RoverSlider extends CBitrixComponent
 	}
 
 	/**
-	 * @param $arParams
+	 * @param $params
 	 * @return mixed
 	 * @author Shulaev (pavel.shulaev@gmail.com)
 	 */
-	public function onPrepareComponentParams($arParams)
+	public function onPrepareComponentParams($params)
 	{
 		//element
-		$arParams['IBLOCK_TYPE']        = $arParams['IBLOCK_TYPE']
-			?: null;
-		$arParams['IBLOCK_ID']          = intval($arParams['IBLOCK_ID']);
-		$arParams['SECTION_ID']         = intval($arParams['SECTION_ID']);
-		$arParams['ELEMENT_ID']         = intval($arParams['ELEMENT_ID']);
-		$arParams['FIGURE']             = intval($arParams['FIGURE']);
-		$arParams['FACT']               = intval($arParams['FACT']);
-		$arParams['LINK_URL']           = intval($arParams['LINK_URL']);
-		$arParams['LINK_NAME']          = intval($arParams['LINK_NAME']);
+		$params['IBLOCK_TYPE']      = trim($params['IBLOCK_TYPE']);
+		$params['IBLOCK_ID']        = intval($params['IBLOCK_ID']);
+		$params['SECTION_ID']       = intval($params['SECTION_ID']);
 
-		$arParams['RESIZE']             = $arParams['RESIZE'] == 'Y'
-			? 'Y' : 'N';
-		$arParams['RESIZE_WIDTH']       = intval($arParams['RESIZE_WIDTH']);
-		$arParams['RESIZE_HEIGHT']      = intval($arParams['RESIZE_HEIGHT']);
-		$arParams['RESIZE_SHARPEN']     = intval($arParams['RESIZE_SHARPEN'])
-			?: self::SHARPEN_DEFAULT;
-		$arParams['RESIZE_QUALITY']     = intval($arParams['RESIZE_QUALITY'])
-			?: self::QUALITY_DEFAULT;
+		$params['RESIZE']           = $params['RESIZE'] == 'Y' ?: 'N';
+		$params['RESIZE_WIDTH']     = intval($params['RESIZE_WIDTH']) ?: self::DEFAULT_WIDTH;
+		$params['RESIZE_HEIGHT']    = intval($params['RESIZE_HEIGHT']) ?: self::DEFAULT_HEIGHT;
+		$params['RESIZE_SHARPEN']   = intval($params['RESIZE_SHARPEN']) ?: self::DEFAULT_SHARPEN;
+		$params['RESIZE_QUALITY']   = intval($params['RESIZE_QUALITY']) ?: self::DEFAULT_QUALITY;
 
-		if(!isset($arParams["CACHE_TIME"]))
-			$arParams["CACHE_TIME"] = 8640000;
+		if(!isset($params["CACHE_TIME"]))
+			$params["CACHE_TIME"] = 8640000;
 
-		return $arParams;
+		return $params;
 	}
 
 	/**
@@ -81,7 +72,6 @@ class RoverSlider extends CBitrixComponent
 	 */
 	protected function checkParams()
 	{
-		//element
 		if (!$this->arParams['IBLOCK_ID'])
 			throw new ArgumentNullException('IBLOCK_ID');
 	}
@@ -93,18 +83,56 @@ class RoverSlider extends CBitrixComponent
 	protected function getFilter()
 	{
 		$filter = [
-			'=ACTIVE'       => 'Y',
-			'=IBLOCK_ID'    => $this->arParams['IBLOCK_ID']
+			'ACTIVE'       => 'Y',
+			'IBLOCK_ID'    => $this->arParams['IBLOCK_ID']
 		];
 
 		if ($this->arParams['SECTION_ID'])
-			$filter['=IBLOCK_SECTION_ID'] = $this->arParams['SECTION_ID'];
+			$filter['IBLOCK_SECTION_ID'] = $this->arParams['SECTION_ID'];
 
-		if ($this->arParams['ELEMENT_ID'])
-			$filter['=ID'] = $this->arParams['ELEMENT_ID'];
+		if (!empty($this->arParams['ELEMENT_ID']))
+			$filter['ID'] = $this->arParams['ELEMENT_ID'];
 
 		return $filter;
 	}
+
+    /**
+     * @return array
+     * @author Pavel Shulaev (https://rover-it.me)
+     */
+	protected function getItems()
+    {
+        $sort   = ['SORT' => 'ASC'];
+        $filter = $this->getFilter();
+        $select = [
+            'ID',
+            'NAME',
+            'IBLOCK_ID',
+            'PREVIEW_PICTURE',
+            'DETAIL_PICTURE',
+            'PREVIEW_TEXT',
+            'DETAIL_TEXT'
+        ];
+
+        $items  = \CIBlockElement::GetList($sort, $filter, false, false, $select);
+        $result = [];
+
+        while ($itemRaw = $items->GetNextElement())
+        {
+            $item = $itemRaw->GetFields();
+            $item = $this->preparePicture($item);
+
+            // prepare text
+            if (strlen($item['DETAIL_TEXT']) && !strlen($item['PREVIEW_TEXT']))
+                $item['PREVIEW_TEXT'] = $item['DETAIL_TEXT'];
+
+            $item['PROPERTIES'] = $itemRaw->GetProperties();
+
+            $result[] = $item;
+        }
+
+        return $result;
+    }
 
 	/**
 	 * @return mixed
@@ -113,35 +141,7 @@ class RoverSlider extends CBitrixComponent
 	 */
 	protected function getResult()
 	{
-		$query = [
-			'filter' => $this->getFilter(),
-			'order' => ['SORT' => 'ASC'],
-			'select' => [
-				'ID',
-				'NAME',
-				'IBLOCK_ID',
-				'PREVIEW_PICTURE',
-				'DETAIL_PICTURE',
-				'PREVIEW_TEXT',
-				'DETAIL_TEXT']
-		];
-
-		$result = \Bitrix\Iblock\ElementTable::getList($query);
-		$this->arResult['ITEMS'] = [];
-
-		while ($item = $result->fetch())
-		{
-			$item = $this->preparePicture($item);
-
-			// prepare text
-			if (strlen($item['DETAIL_TEXT']) && !strlen($item['PREVIEW_TEXT']))
-				$item['PREVIEW_TEXT'] = $item['DETAIL_TEXT'];
-
-			// add props
-			$item = $this->addProps($item);
-
-			$this->arResult['ITEMS'][] = $item;
-		}
+	    $this->arResult['ITEMS'] = $this->getItems();
 	}
 
 	/**
@@ -167,52 +167,15 @@ class RoverSlider extends CBitrixComponent
 	}
 
 	/**
-	 * @param array $item
-	 * @return mixed
-	 * @throws ArgumentNullException
-	 * @author Pavel Shulaev (http://rover-it.me)
-	 */
-	protected function addProps(array $item)
-	{
-		if (!isset($item['ID']) || empty($item['ID']))
-			throw new ArgumentNullException('elementId');
-
-		$elementId  = $item['ID'];
-
-		if (is_null($elementId))
-			throw new ArgumentNullException('elementId');
-
-		$property = new Element($this->arParams['IBLOCK_ID'],
-			$elementId);
-
-		$property->loadFromDatabase();
-
-		$item['FIGURE'] = intval($this->arParams['FIGURE'])
-			? reset($property->getPropertyValues($this->arParams['FIGURE']))
-			: '';
-
-		$item['FACT'] = intval($this->arParams['FACT'])
-			? reset($property->getPropertyValues($this->arParams['FACT']))
-			: '';
-
-		$item['LINK_URL'] = intval($this->arParams['LINK_URL'])
-			? reset($property->getPropertyValues($this->arParams['LINK_URL']))
-			: '';
-
-		$item['LINK_NAME'] = intval($this->arParams['LINK_NAME'])
-			? reset($property->getPropertyValues($this->arParams['LINK_NAME']))
-			: '';
-
-		return $item;
-	}
-
-	/**
 	 * @param array $picture
 	 * @return array
 	 * @author Pavel Shulaev (http://rover-it.me)
 	 */
 	protected function resize(array $picture)
 	{
+        if ($this->arParams['RESIZE'] != 'Y')
+            return $picture;
+
 		if ((!$this->arParams['RESIZE_HEIGHT'])
 			|| (!$this->arParams['RESIZE_WIDTH']))
 			return $picture;
